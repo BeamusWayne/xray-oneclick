@@ -2,35 +2,31 @@
 
 单用户、无面板。一条命令在 Linux VPS 上安装 [Xray-core](https://github.com/XTLS/Xray-core)、写入 **VLESS + REALITY + Vision**、设 systemd 自启，并打印给 **Clash Verge / Clash Meta** 和 **Shadowrocket** 用的导入信息。
 
-协议按「只用 IP、不要域名和证书」来选。仓库是私有的，所以**不能**对 `raw.githubusercontent.com` 做公开的 `curl | bash`。
+协议按「只用 IP、不要域名和证书」来选。密钥在每台机器上现场生成，不会写在仓库里。
 
 ## 在服务器上怎么跑
 
-把本仓库弄到 VPS 上（任选一种），然后：
+VPS 上用 root 执行：
 
 ```bash
-sudo bash install.sh
+bash <(curl -fsSL https://raw.githubusercontent.com/BeamusWayne/xray-oneclick/main/install.sh)
 ```
 
-私有库常见拿法：
+换端口等参数跟在后面，例如：
 
 ```bash
-# 本机已登录 gh 时
-gh repo clone BeamusWayne/xray-oneclick
-cd xray-oneclick
-sudo bash install.sh
+bash <(curl -fsSL https://raw.githubusercontent.com/BeamusWayne/xray-oneclick/main/install.sh) --port 8443
+```
 
-# 或用带权限的 HTTPS（Personal Access Token）
+也可以先 clone 再本地跑：
+
+```bash
 git clone https://github.com/BeamusWayne/xray-oneclick.git
 cd xray-oneclick
 sudo bash install.sh
-
-# 或在能访问此库的电脑上下载 install.sh，再 scp 到服务器
-scp install.sh root@你的VPS:/root/
-ssh root@你的VPS 'bash /root/install.sh'
 ```
 
-需要：root、systemd（Debian / Ubuntu / CentOS 等）、能访问 GitHub 以下载官方 [Xray-install](https://github.com/XTLS/Xray-install)。
+需要：root、systemd（Debian / Ubuntu / CentOS 等）、能访问 GitHub 以下载本脚本和官方 [Xray-install](https://github.com/XTLS/Xray-install)。
 
 ## 装完做什么
 
