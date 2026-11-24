@@ -171,29 +171,21 @@ install_xray() {
   fi
 
   need_cmd curl
-  local user_args=()
-  if (( PORT < 1024 )); then
-    user_args+=(-u root)
-  fi
-
   yellow "正在调用官方 Xray-install ..."
-  if ((${#user_args[@]})); then
-    bash -c "$(curl -fsSL "$XRAY_INSTALL_URL")" @ install "${user_args[@]}"
-  else
-    bash -c "$(curl -fsSL "$XRAY_INSTALL_URL")" @ install
-  fi
+  local installer
+  installer="$(curl -fsSL "$XRAY_INSTALL_URL")"
+  bash -c "$installer" @ install
 }
 
 parse_x25519() {
   local out="$1"
-  PRIVATE_KEY="$(printf '%s\n' "$out" | awk -F': *' 'BEGIN{IGNORECASE=1} $1 ~ /^Private(Key)?$|^Private key$/{print $2; exit}' | tr -d '[:space:]')"
-  PUBLIC_KEY="$(printf '%s\n' "$out" | awk -F': *' '$1=="Password"{print $2; exit}' | tr -d '[:space:]')"
+  PRIVATE_KEY="$(printf '%s\n' "$out" | awk -F': *' 'tolower($1) ~ /^private( ?key)?$/ {print $2; exit}' | tr -d '[:space:]')"
+  PUBLIC_KEY="$(printf '%s\n' "$out" | awk -F': *' 'tolower($1) ~ /^password( \(public ?key\))?$/ {print $2; exit}' | tr -d '[:space:]')"
   if [[ -z "$PUBLIC_KEY" ]]; then
-    PUBLIC_KEY="$(printf '%s\n' "$out" | awk -F': *' 'BEGIN{IGNORECASE=1} $1 ~ /^Public(Key)?$|^Public key$/{print $2; exit}' | tr -d '[:space:]')"
+    PUBLIC_KEY="$(printf '%s\n' "$out" | awk -F': *' 'tolower($1) ~ /^public( ?key)?$/ {print $2; exit}' | tr -d '[:space:]')"
   fi
   if [[ -z "$PRIVATE_KEY" || -z "$PUBLIC_KEY" ]]; then
-    red "解析 xray x25519 输出失败："
-    printf '%s\n' "$out"
+    red "解析 xray x25519 输出失败：未找到私钥或公钥字段"
     exit 1
   fi
 }
@@ -208,8 +200,13 @@ generate_secrets() {
   fi
 }
 
-write_config() {
+write_config() (
   mkdir -p "$(dirname "$CONFIG_PATH")"
+  local config_file temp_config service_user service_group
+  config_file="$(readlink -f -- "$CONFIG_PATH")"
+  temp_config="$(mktemp -- "${config_file}.XXXXXX")"
+  trap 'rm -f -- "$temp_config"' EXIT
+
   local uuid_j pk_j sni_j dest_j sid_j
   uuid_j="$(json_escape "$UUID")"
   pk_j="$(json_escape "$PRIVATE_KEY")"
@@ -217,7 +214,7 @@ write_config() {
   dest_j="$(json_escape "$REALITY_DEST")"
   sid_j="$(json_escape "$SHORT_ID")"
 
-  cat >"$CONFIG_PATH" <<EOF
+  cat >"$temp_config" <<EOF
 {
   "log": {
     "loglevel": "warning"
@@ -271,8 +268,20 @@ write_config() {
   ]
 }
 EOF
-  chmod 600 "$CONFIG_PATH"
-}
+  # 官方服务以 xray 用户运行，旧安装也可能使用 root 或其他账号。
+  service_user="$(systemctl show -p User xray.service)"
+  service_user="${service_user#User=}"
+  if [[ -n "$service_user" && "$service_user" != root && "$service_user" != 0 ]]; then
+    service_group="$(systemctl show -p Group xray.service)"
+    service_group="${service_group#Group=}"
+    if [[ -z "$service_group" ]]; then
+      service_group="$(id -gn -- "$service_user")"
+    fi
+    chown "root:${service_group}" "$temp_config"
+    chmod 640 "$temp_config"
+  fi
+  mv -fT -- "$temp_config" "$config_file"
+)
 
 write_state() {
   cat >"$STATE_PATH" <<EOF
